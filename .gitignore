@@ -1,0 +1,5 @@
+config.ini
+*.txt
+*.jpeg
+*.jpg
+*.pyc
