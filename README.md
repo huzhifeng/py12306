@@ -1,4 +1,4 @@
-﻿51dingpiao
+51dingpiao
 ======
 51dingpiao is a python script used to buy ticket on 12306.
 
