@@ -38,14 +38,15 @@ def stationInit():
   referer = "https://kyfw.12306.cn/otn/"
   resp = sendGetRequest(url, referer)
   try:
-    respInfo = resp.read().decode("utf-8","ignore")
-    if respInfo.find("'@") != -1:
-      station_names = respInfo[respInfo.find("'@"):]
+    data = resp.read().decode("utf-8","ignore")
+    if data.find("'@") != -1:
+      station_names = data[data.find("'@"):]
     else:
       print(u"读取站点信息失败")
       return {}
   except:
     print(u"读取站点信息异常")
+    sys.exit()
   station_list = station_names.split('@')
   station_list = station_list[1:] # The first one is empty, skip it
 
@@ -165,7 +166,8 @@ def inputDate(prompt=u"请输入乘车日期:"):
   train_date = ''
 
   while 1:
-    train_date = raw_input(prompt)
+    print(prompt)
+    train_date = raw_input('')
     if checkDate(train_date):
       break
     else:
@@ -243,7 +245,7 @@ def getCaptcha(url, module, rand):
   randUrl = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do?module=%s&rand=%s'%(module, rand);
   captcha = ''
   while 1:
-    f = open("captcha.jpg","wb")
+    f = open("captcha.gif","wb")
     f.write(urllib2.urlopen(url).read())
     f.close()
     print u"请输入4位图片验证码(直接回车刷新):"
@@ -379,30 +381,43 @@ class MyOrder(object):
     referer = "https://kyfw.12306.cn/otn/"
     resp = sendGetRequest(url, referer)
 
-    print(u"接收登录验证码...")
-    url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand'
-    if self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value:
-      url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew;jsessionid=%s?module=login&rand=sjrand'%(self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value)
-    self.captcha = getCaptcha(url, 'login', 'sjrand')
+    tries = 0
+    while tries < 3:
+      tries += 1
+      print(u"接收登录验证码...")
+      url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand'
+      if self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value:
+        url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew;jsessionid=%s?module=login&rand=sjrand'%(self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value)
+      self.captcha = getCaptcha(url, 'login', 'sjrand')
 
-    print(u"正在校验登录验证码...")
-    url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
-    referer = "https://kyfw.12306.cn/otn/login/init"
-    parameters = [
-      ('randCode', self.captcha),
-      ('rand', "sjrand"),
-    ]
-    postData = urllib.urlencode(parameters)
-    resp = sendPostRequest(url, postData, referer)
-    # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
-    # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"N","messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
-    if not (obj and obj['status'] and (obj['data'] == 'Y')):
-      print(u"校验登录验证码失败")
-      if obj.has_key('messages') and obj['messages']: # 打印错误信息
-        print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-      return RET_ERR
-    print(u"校验登录验证码成功")
+      print(u"正在校验登录验证码...")
+      url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
+      referer = 'https://kyfw.12306.cn/otn/login/init'
+      parameters = [
+        ('randCode', self.captcha),
+        ('rand', "sjrand"),
+      ]
+      postData = urllib.urlencode(parameters)
+      resp = sendPostRequest(url, postData, referer)
+      try:
+        data = resp.read()
+      except:
+        print(u"校验登录验证码异常")
+        continue
+      # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
+      # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"N","messages":[],"validateMessages":{}}
+      obj = data2Json(data, ('status', 'httpstatus', 'data'))
+      if not (obj and obj['status'] and (obj['data'] == 'Y')):
+        print(u"校验登录验证码失败")
+        if obj.has_key('messages') and obj['messages']: # 打印错误信息
+          print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
+        continue
+      else:
+        print(u"校验登录验证码成功")
+        break
+    else:
+      print(u'尝试次数太多,自动退出程序以防账号被冻结')
+      sys.exit()
 
     print(u"正在登录...")
     url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
@@ -414,9 +429,14 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"登录异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{},"messages":["密码输入错误,您还有3次机会!"],"validateMessages":{}}
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"loginCheck":"Y"},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['data'].has_key('loginCheck') and (obj['data']['loginCheck'] == 'Y')):
       print(u"登陆失败啦!重新登陆...")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -474,7 +494,11 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
-    resp.read()
+    try:
+      data = resp.read()
+    except:
+      print(u"查询车票初始化异常")
+      return RET_ERR
     '''
 
     # 可以省略的步骤
@@ -490,7 +514,12 @@ class MyOrder(object):
     ]
     url += urllib.urlencode(parameters)
     resp = sendGetRequest(url, referer)
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    try:
+      data = resp.read()
+    except:
+      print(u"查询车票异常")
+      return RET_ERR
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and len(obj['data'])):
       print(u'查询车票失败')
       return RET_ERR
@@ -645,8 +674,13 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"检查登录异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"flag":true},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['data'].has_key('flag') and obj['data']['flag']):
       print(u"你好像还没有登录哦")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -675,8 +709,13 @@ class MyOrder(object):
       if i < (length - 1):
         postData += '&'
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"下单异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus'))
+    obj = data2Json(data, ('status', 'httpstatus'))
     if not (obj and obj['status']):
       print(u"下单失败啦")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -692,13 +731,17 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
-    respInfo = resp.read()
-    s = respInfo.find('globalRepeatSubmitToken') # TODO
-    e = respInfo.find('global_lang')
+    try:
+      data = resp.read()
+    except:
+      print(u"订单初始化异常")
+      return RET_ERR
+    s = data.find('globalRepeatSubmitToken') # TODO
+    e = data.find('global_lang')
     if s == -1 or e == -1:
       print(u'找不到 globalRepeatSubmitToken')
       return RET_ERR
-    buf = respInfo[s:e]
+    buf = data[s:e]
     s = buf.find("'")
     e = buf.find("';")
     if s == -1 or e == -1:
@@ -706,19 +749,16 @@ class MyOrder(object):
       return RET_ERR
     self.repeatSubmitToken = buf[s+1:e]
 
-    s = respInfo.find('key_check_isChange')
-    e = respInfo.find('leftDetails')
+    s = data.find('key_check_isChange')
+    e = data.find('leftDetails')
     if s == -1 or e == -1:
       print(u'找不到 key_check_isChange')
       return RET_ERR
-    self.keyCheckIsChange = respInfo[s+len('key_check_isChange')+3:e-3]
+    self.keyCheckIsChange = data[s+len('key_check_isChange')+3:e-3]
 
     return RET_OK
 
   def checkOrderInfo(self):
-    print(u"接收订单验证码...")
-    self.captcha = getCaptcha("https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp", 'passenger', 'randp')
-
     # 可以省略的步骤
     '''
     url = 'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs'
@@ -731,25 +771,41 @@ class MyOrder(object):
     resp = sendPostRequest(url, postData, referer)
     '''
 
-    print(u"正在校验订单验证码...")
-    url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
-    referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-    parameters = [
-      ('randCode', self.captcha),
-      ('rand', 'randp'),
-      ('_json_att', ''),
-      ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
-    ]
-    postData = urllib.urlencode(parameters)
-    resp = sendPostRequest(url, postData, referer)
-    # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
-    if not (obj and obj['status'] and (obj['data'] == 'Y')):
-      print(u"校验订单验证码失败")
-      if obj.has_key('messages') and obj['messages']: # 打印错误信息
-        print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
+    tries = 0
+    while tries < 3:
+      tries += 1
+      print(u"接收订单验证码...")
+      self.captcha = getCaptcha("https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp", 'passenger', 'randp')
+
+      print(u"正在校验订单验证码...")
+      url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
+      referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
+      parameters = [
+        ('randCode', self.captcha),
+        ('rand', 'randp'),
+        ('_json_att', ''),
+        ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
+      ]
+      postData = urllib.urlencode(parameters)
+      resp = sendPostRequest(url, postData, referer)
+      try:
+        data = resp.read()
+      except:
+        print(u"校验订单验证码异常")
+        continue
+      # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
+      obj = data2Json(data, ('status', 'httpstatus', 'data'))
+      if not (obj and obj['status'] and (obj['data'] == 'Y')):
+        print(u"校验订单验证码失败")
+        if obj.has_key('messages') and obj['messages']: # 打印错误信息
+          print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
+        continue
+      else:
+        print(u"校验订单验证码成功")
+        break
+    else:
+      print(u'尝试次数太多,请重试')
       return RET_ERR
-    print(u"校验订单验证码成功")
 
     passengerTicketStr = ''
     oldPassengerStr = ''
@@ -780,9 +836,14 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"检查订单异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"submitStatus":true},"messages":[],"validateMessages":{}}
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"errMsg":"非法的席别，请重新选择！","submitStatus":false},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['status'] and obj['data'].has_key('submitStatus') and obj['data']['submitStatus']):
       print(u"检查订单失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -812,8 +873,13 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"查询排队情况异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"count":"0","ticket":"1007803168402230000010078003803014400024","op_2":"false","countT":"0","op_1":"false"},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['status'] and obj['data'].has_key('op_1') and obj['data'].has_key('op_2')):
       print(u"查询排队情况失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -846,8 +912,13 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"提交订单排队异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"submitStatus":true},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['status'] and obj['data'].has_key('submitStatus') and obj['data']['submitStatus']):
       print(u"提交订单排队失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
@@ -862,15 +933,20 @@ class MyOrder(object):
     url = 'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?random=%13d&tourFlag=dc&_json_att=&REPEAT_SUBMIT_TOKEN=%s'%(random.randint(1000000000000,1999999999999), self.repeatSubmitToken)
     referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
     resp = sendGetRequest(url, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"等待订单流水号异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"queryOrderWaitTimeStatus":true,"count":0,"waitTime":4,"requestId":5820530635606607035,"waitCount":1,"tourFlag":"dc","orderId":null},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['status'] and obj['data'].has_key('orderId') and obj['data']['orderId']):
-      print(u"等待订票流水号失败")
+      print(u"等待订单流水号失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
       return RET_ERR
     self.orderId = obj['data']['orderId']
-    print(u"订票流水号为:")
+    print(u"订单流水号为:")
     print(self.orderId)
     return RET_OK
 
@@ -885,9 +961,14 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"等待订票结果异常")
+      return RET_ERR
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"submitStatus":true},"messages":[],"validateMessages":{}}
     # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"errMsg":"获取订单信息失败，请查看未完成订单，继续支付！","submitStatus":false},"messages":[],"validateMessages":{}}
-    obj = data2Json(resp.read(), ('status', 'httpstatus', 'data'))
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
     if not (obj and obj['status'] and obj['data'].has_key('submitStatus') and obj['data']['submitStatus']):
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
@@ -905,11 +986,11 @@ class MyOrder(object):
     resp = sendPostRequest(url, postData, referer)
 
     try:
-      respInfo = resp.read()
+      data = resp.read()
     except:
       print(u"请求异常")
       return RET_ERR
-    if respInfo.find(u'席位已锁定') != -1:
+    if data.find(u'席位已锁定') != -1:
       print u"订票成功^_^请在45分钟内完成网上支付,否则系统将自动取消"
       return RET_OK
     else:
@@ -922,11 +1003,11 @@ class MyOrder(object):
     referer = 'https://kyfw.12306.cn/otn//payOrder/init?random=%13d'%(random.randint(1000000000000,1999999999999))
     resp = sendGetRequest(url, referer)
     try:
-      respInfo = resp.read()
+      data = resp.read()
     except:
       print(u"请求异常")
       return RET_ERR
-    if respInfo.find(u'总张数') != -1 and respInfo.find(u'待支付金额') != -1:
+    if data.find(u'总张数') != -1 and data.find(u'待支付金额') != -1:
       print u"订票成功^_^请在45分钟内完成订单,否则系统将自动取消"
       return RET_OK
     '''
@@ -938,7 +1019,12 @@ class MyOrder(object):
     ]
     postData = urllib.urlencode(parameters)
     resp = sendPostRequest(url, postData, referer)
-    obj = data2Json(resp.read(), ('status', 'httpstatus'))
+    try:
+      data = resp.read()
+    except:
+      print(u"查询未完成订单异常")
+      return RET_ERR
+    obj = data2Json(data, ('status', 'httpstatus'))
     if not (obj and obj['status'] and obj.has_key('data')):
       #print u"查询未完成订单失败"
       return RET_ERR
@@ -946,7 +1032,7 @@ class MyOrder(object):
       print u"查询到有未完成订单，请先处理"
       return RET_OK
 
-def Dingpiao51():
+def main():
   print(getTime())
   '''
   logging.basicConfig(level=logging.DEBUG,
@@ -987,8 +1073,6 @@ def Dingpiao51():
   print(getTime())
 
   while 1:
-    if order.queryMyOrderNotComplete() == RET_OK:
-      break
     # 查询车票
     if order.queryTickets() != RET_OK:
       continue
@@ -1000,6 +1084,8 @@ def Dingpiao51():
       continue
     elif action == 0:
       sys.exit()
+    if order.queryMyOrderNotComplete() == RET_OK: # TODO
+      break
     # 订单初始化
     if order.initOrder() != RET_OK:
       continue
@@ -1033,6 +1119,6 @@ def Dingpiao51():
   print(getTime())
 
 if __name__=="__main__":
-  Dingpiao51()
+  main()
 
 # EOF
