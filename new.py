@@ -257,7 +257,13 @@ def getCaptcha(url, module, rand):
 #------------------------------------------------------------------------------
 # Convert json string to dict object
 def data2Json(data, keys):
-  obj = json.loads(data);
+  if not data:
+    return {}
+  try:
+    obj = json.loads(data);
+  except:
+    print(u'data2Json() exception')
+    return {}
   if not (obj and set(keys).issubset(obj)):
     print(u'data2Json() failed')
     return {}
@@ -358,9 +364,9 @@ class MyOrder(object):
     print u"订票信息:"
     print u"%s\t%s\t%s--->%s"%(self.username,self.train_date,self.from_city_name,self.to_city_name)
     printDelimiter()
-    print u"序号 姓名\t证件类型\t证件号码\t\t手机号码\t席别\t票种\t"
+    print u"序号 姓名\t证件类型\t证件号码\t\t席别\t票种\t"
     for p in self.passengers:
-      print u"%d  %s\t%s\t%s\t%s\t%s\t%s"%(p['index'],p['name'].decode("utf-8","ignore"),getCardType(p['cardtype']),p['id'],p['phone'],getSeatType(p['seattype']),getTicketType(p['tickettype']))
+      print u"%d  %s\t%s\t%s\t%s\t%s"%(p['index'],p['name'].decode("utf-8","ignore"),getCardType(p['cardtype']),p['id'],getSeatType(p['seattype']),getTicketType(p['tickettype']))
 
   def initCookieJar(self):
     self.cj = cookielib.CookieJar()
@@ -620,7 +626,7 @@ class MyOrder(object):
     ret = -1
     self.current_train_index = 0
     trains_num = len(self.trains)
-    print u"您可以选择:\n1~%d.选择车次开始订票\nd.更改乘车日期\nf.更改出发站\nt.更改目的站\ns.同时更改出发站和目的站\na.同时更改乘车日期,出发站和目的站\nq.退出\n刷新车票请直接回车"%(trains_num)
+    print u"您可以选择:\n1~%d.选择车次开始订票\nd.更改乘车日期\nf.更改出发站\nt.更改目的站\ns.同时更改出发站和目的站\na.同时更改乘车日期,出发站和目的站\nu.查询未完成订单\nq.退出\n刷新车票请直接回车"%(trains_num)
     printDelimiter()
     select = raw_input("")
     if select.isdigit():
@@ -658,6 +664,9 @@ class MyOrder(object):
       station = inputStation(u"请输入目的站:")
       self.to_city_name = station['name']
       self.to_station_telecode = station['telecode']
+    elif select == "u" or select == "U":
+      ret = self.queryMyOrderNotComplete()
+      ret = self.selectAction()
     elif select == "q" or select == "Q":
       ret = 0
 
@@ -929,7 +938,7 @@ class MyOrder(object):
     return RET_OK
 
   def queryOrderWaitTime(self):
-    print(u"等待订票流水号...")
+    print(u"等待订单流水号...")
     url = 'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?random=%13d&tourFlag=dc&_json_att=&REPEAT_SUBMIT_TOKEN=%s'%(random.randint(1000000000000,1999999999999), self.repeatSubmitToken)
     referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
     resp = sendGetRequest(url, referer)
@@ -944,6 +953,8 @@ class MyOrder(object):
       print(u"等待订单流水号失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
+      if obj['data'].has_key('msg') and obj['data']['msg']: # 打印错误信息
+        print json.dumps(obj['data']['msg'], ensure_ascii=False, indent=2)
       return RET_ERR
     self.orderId = obj['data']['orderId']
     print(u"订单流水号为:")
@@ -1028,9 +1039,18 @@ class MyOrder(object):
     if not (obj and obj['status'] and obj.has_key('data')):
       #print u"查询未完成订单失败"
       return RET_ERR
-    if (obj['data'].has_key('orderDBList') and obj['data']['orderDBList']) or (obj['data'].has_key('orderCacheDTO') and obj['data']['orderCacheDTO']):
+    if obj['data'].has_key('orderDBList') and obj['data']['orderDBList']:
       print u"查询到有未完成订单，请先处理"
       return RET_OK
+    if obj['data'].has_key('orderCacheDTO') and obj['data']['orderCacheDTO'] and obj['data']['orderCacheDTO'].has_key('status'):
+      if obj['data']['orderCacheDTO']['status'] == 0:
+        print u"查询到cache有未完成订单，请先处理"
+        return RET_OK
+      else:
+        if obj['data']['orderCacheDTO'].has_key('message'):
+          print json.dumps(obj['data']['orderCacheDTO']['message'], ensure_ascii=False, indent=2)
+
+    return RET_ERR
 
 def main():
   print(getTime())
@@ -1084,8 +1104,6 @@ def main():
       continue
     elif action == 0:
       sys.exit()
-    if order.queryMyOrderNotComplete() == RET_OK: # TODO
-      break
     # 订单初始化
     if order.initOrder() != RET_OK:
       continue
