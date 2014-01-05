@@ -13,6 +13,8 @@ import ConfigParser
 import codecs
 import random
 #import logging
+import smtplib
+from email.mime.text import MIMEText
 
 # Global variables
 stations = []
@@ -311,6 +313,16 @@ class MyOrder(object):
     self.current_train_index = 0 # 当前选中的列车索引序号
     self.captcha = '' # 图片验证码
     self.orderId = '' # 订单流水号
+    self.notify = {
+      'mail_enable':0,
+      'mail_username':'',
+      'mail_password':'',
+      'mail_server':'',
+      'mail_to':[],
+      'trains':[],
+      'xb':[],
+      'focus':{}
+    }
 
   def readConfig(self,config_file='config.ini'):
     # 从配置文件读取订票信息
@@ -326,6 +338,21 @@ class MyOrder(object):
     self.train_date = cp.get("train","date");
     self.from_city_name = cp.get("train","from")
     self.to_city_name = cp.get("train","to")
+    self.notify['mail_enable'] = int(cp.get("notify","mail_enable"))
+    self.notify['mail_username'] = cp.get("notify","mail_username")
+    self.notify['mail_password'] = cp.get("notify","mail_password")
+    self.notify['mail_server'] = cp.get("notify","mail_server")
+    self.notify['mail_to'] = cp.get("notify","mail_to").split(',')
+    self.notify['trains'] = cp.get("notify","trains").split(',')
+    self.notify['xb'] = cp.get("notify","xb").split(',')
+    '''
+    focus = {
+      'K9062':['yw', 'yz'],
+      'K9060':['yw', 'yz'],
+    }
+    '''
+    for t in self.notify['trains']:
+      self.notify['focus'][t] = self.notify['xb']
     # 检查出发站
     station = getStationByName(self.from_city_name)
     if not station:
@@ -533,13 +560,32 @@ class MyOrder(object):
       self.trains = obj['data']
       return RET_OK
 
+  def sendMailNotification(self):
+    print(u'正在发送邮件提醒...')
+    me = u'订票提醒<%s>'%(self.notify['mail_username'])
+    msg = MIMEText(self.notify['mail_content'], _subtype='plain', _charset='gb2312')
+    msg['Subject'] = u'余票信息'
+    msg['From'] = me
+    msg['To'] = ';'.join(self.notify['mail_to'])
+    try:
+      server = smtplib.SMTP()
+      server.connect(self.notify['mail_server'])
+      server.login(self.notify['mail_username'], self.notify['mail_password'])
+      server.sendmail(me, self.notify['mail_to'], msg.as_string())
+      server.close()
+      print(u'发送邮件提醒成功')
+      return True
+    except Exception, e:
+      print(u'发送邮件提醒失败')
+      print str(e)
+      return False
+
   def printTrains(self):
     printDelimiter()
     print u"%s\t%s--->%s  '有':票源充足  '无':票已售完  '*':未到起售时间  '--':无此席别"%(self.train_date,self.from_city_name,self.to_city_name)
     print u"余票查询结果如下:"
     printDelimiter()
     print u"序号/车次\t乘车站\t目的站\t一等座\t二等座\t软卧\t硬卧\t软座\t硬座\t无座\t价格"
-    '''
     seatTypeCode = {
       'swz':'商务座',
       'tz':'特等座',
@@ -553,7 +599,6 @@ class MyOrder(object):
       'wz':'无座',
       'qt':'其它',
     }
-    '''
     printDelimiter()
     # TODO 余票数量和票价 https://kyfw.12306.cn/otn/leftTicket/queryTicketPrice?train_no=770000K77505&from_station_no=09&to_station_no=13&seat_types=1431&train_date=2014-01-01
     # yp_info=4022300000301440004610078033421007800536 代表
@@ -562,6 +607,7 @@ class MyOrder(object):
     # 1007803342 无座342
     # 1007800536 硬座536
     index = 1
+    self.notify['mail_content'] = ''
     for train in self.trains:
       t = train['queryLeftNewDTO']
       status = '售完' if t['canWebBuy']=='N' else '预定'
@@ -619,7 +665,36 @@ class MyOrder(object):
         yz_price,
         yw_price)
       index += 1
+      if self.notify['mail_enable'] == 1 and t['canWebBuy'] == 'Y':
+        msg = ''
+        if self.notify['focus'].has_key('all'): # 任意车次
+          if self.notify['focus']['all'][0] == 'all': # 任意席位
+            msg = u'车次:%s已经有票啦\n'%(t['station_train_code'])
+          else: # 指定席位
+            for seat in self.notify['focus']['all']:
+              if ypInfo.has_key(seat) and ypInfo[seat]['left']:
+                msg += u'座位类型:%s, 剩余车票数量:%s, 票价:%s \n'%(seat if not seatTypeCode.has_key(seat) else seatTypeCode[seat], ypInfo[seat]['left'], ypInfo[seat]['price'])
+            if msg:
+              msg = u'车次:%s现在有票啦\n'%(t['station_train_code']) + msg + u'\n'
+        elif self.notify['focus'].has_key(t['station_train_code']): # 指定车次
+          if self.notify['focus'][t['station_train_code']][0] == 'all': # 任意席位
+            msg = u'车次:%s已经有票啦\n'%(t['station_train_code'])
+          else: # 指定席位
+            for seat in self.notify['focus'][t['station_train_code']]:
+              if ypInfo.has_key(seat) and ypInfo[seat]['left']:
+                msg += u'座位类型:%s, 剩余车票数量:%s, 票价:%s \n'%(seat if not seatTypeCode.has_key(seat) else seatTypeCode[seat], ypInfo[seat]['left'], ypInfo[seat]['price'])
+            if msg:
+              msg = u'车次:%s现在有票啦\n'%(t['station_train_code']) + msg + u'\n'
+        self.notify['mail_content'] += msg
     printDelimiter()
+    if self.notify['mail_enable'] == 1:
+      if self.notify['mail_content']:
+        self.sendMailNotification()
+        return RET_OK
+      else:
+        return RET_ERR
+    else:
+      return RET_OK
 
   # -1->重新查询/0->退出程序/1~len->车次序号
   def selectAction(self):
@@ -1068,6 +1143,7 @@ def main():
   parser.add_argument('-u', '--username', help='Specify username to login')
   parser.add_argument('-p', '--password', help='Specify password to login')
   parser.add_argument('-d', '--date', help='Specify train date, 2014-01-01')
+  parser.add_argument('-m', '--mail', help='Send email notification when available')
   args = parser.parse_args()
 
   stationInit()
@@ -1086,6 +1162,8 @@ def main():
       order.train_date = args.date  # 使用指定的乘车日期代替配置文件中的乘车日期
     else:
       order.train_date = inputDate(u"乘车日期错误,请重新输入:")
+  if args.mail:
+    order.notify['mail_enable'] = 1 if args.mail == '1' else 0  # 有票时自动发送邮件通知
 
   order.printConfig()
   order.initCookieJar()
@@ -1097,7 +1175,8 @@ def main():
     if order.queryTickets() != RET_OK:
       continue
     # 显示查询结果
-    order.printTrains()
+    if order.printTrains() != RET_OK:
+      continue
     # 选择菜单列举的动作之一
     action = order.selectAction()
     if action == -1:
