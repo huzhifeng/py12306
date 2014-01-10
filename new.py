@@ -15,11 +15,30 @@ import random
 #import logging
 import smtplib
 from email.mime.text import MIMEText
+import time
 
 # Global variables
-stations = []
 RET_OK = 0
 RET_ERR = -1
+stations = []
+seatTypeCodes = [
+  ('1', u"硬座"),#硬座/无座
+  ('3', u"硬卧"),
+  ('4', u"软卧"),
+  ('7', u"一等软座"),
+  ('8', u"二等软座"),
+  ('9', u"商务座"),
+  ('M', u"一等座"),
+  ('O', u"二等座"),
+  ('P', u"特等座")
+]
+cardTypeCodes = [
+  ('1', u"二代身份证"),
+  ('2', u"一代身份证"),
+  ('C', u"港澳通行证"),
+  ('G', u"台湾通行证"),
+  ('B', u"护照")
+]
 
 # Set default encoding to utf-8
 reload(sys)
@@ -104,13 +123,7 @@ def trainDate(d):
 #------------------------------------------------------------------------------
 # 证件类型
 def getCardType(cardtype):
-  d = {
-    '1':u"二代身份证",
-    '2':u"一代身份证",
-    'C':u"港澳通行证",
-    'G':u"台湾通行证",
-    'B':u"护照"
-  }
+  d = dict(cardTypeCodes)
 
   if d.has_key(cardtype):
     return d[cardtype]
@@ -120,22 +133,25 @@ def getCardType(cardtype):
 #------------------------------------------------------------------------------
 # 席别:
 def getSeatType(seattype):
-  d = {
-    '1':u"硬座",#硬座/无座
-    '3':u"硬卧",
-    '4':u"软卧",
-    '7':u"一等软座",
-    '8':u"二等软座",
-    '9':u"商务座",
-    'M':u"一等座",
-    'O':u"二等座",
-    'P':u"特等座"
-  }
+  d = dict(seatTypeCodes)
 
   if d.has_key(seattype):
     return d[seattype]
   else:
     return u"未知席别"
+
+def selectSeatType():
+  seattype = '1' # 默认硬座
+  while 1:
+    print(u'请选择席别(注意大小写):')
+    for xb in seatTypeCodes:
+      print(u'%s:%s'%(xb[0], xb[1]))
+    seattype = raw_input('')
+    d = dict(seatTypeCodes)
+    if d.has_key(seattype):
+      return seattype
+    else:
+      print(u'无效的席别类型!')
 
 #------------------------------------------------------------------------------
 # 票种类型
@@ -308,7 +324,8 @@ class MyOrder(object):
     self.to_city_name = to_city_name # 对应查询界面'目的地'输入框中的内容
     self.from_station_telecode = '' # 出发站编码
     self.to_station_telecode = '' # 目的站编码
-    self.passengers = [] # 乘客列表
+    self.passengers = [] # 乘车人列表,最多5人
+    self.normal_passengers = [] # 我的联系人列表
     self.trains = [] # 列车列表, 查询余票后自动更新
     self.current_train_index = 0 # 当前选中的列车索引序号
     self.captcha = '' # 图片验证码
@@ -502,6 +519,77 @@ class MyOrder(object):
     else:
       print u"失败次数太多,自动退出程序"
       sys.exit()
+
+  def getPassengerDTOs(self):
+    url = 'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs'
+    referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
+    parameters = [
+      ('', ''),
+    ]
+    postData = urllib.urlencode(parameters)
+    resp = sendPostRequest(url, postData, referer)
+    try:
+      data = resp.read()
+    except:
+      print(u"获取乘客信息异常")
+      return RET_ERR
+    obj = data2Json(data, ('status', 'httpstatus', 'data'))
+    if not (obj and obj['data'].has_key('normal_passengers') and obj['data']['normal_passengers'] and len(obj['data']['normal_passengers'])):
+      print(u'获取乘客信息失败')
+      if obj.has_key('messages') and obj['messages']: # 打印错误信息
+        print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
+      if obj['data'].has_key('exMsg') and obj['data']['exMsg']: # 打印错误信息
+        print json.dumps(obj['data']['exMsg'], ensure_ascii=False, indent=2)
+      return RET_ERR
+    else:
+      self.normal_passengers = obj['data']['normal_passengers']
+      return RET_OK
+
+  def selectPassengers(self):
+    if not (self.normal_passengers and len(self.normal_passengers)):
+      print(u'乘客信息尚未初始化, 无法选择')
+      return RET_ERR
+    num = len(self.normal_passengers)
+    for i in xrange(0, num):
+      p = self.normal_passengers[i]
+      print(u'%d.%s  \t'%(i+1, p['passenger_name'])),
+      if i > 0 and (i + 1) % 5 == 0:
+        print('')
+    while 1:
+      print(u'\n请选择乘车人, 最多选择5个, 以逗号隔开, 如:1,2,3,4,5, 直接回车不选择, 使用配置文件中的乘客信息')
+      buf = raw_input('')
+      if not buf:
+        return RET_ERR
+      pattern = re.compile(r'^[0-9,]*\d$') # 只能输入数字和逗号, 并且必须以数字结束
+      if pattern.match(buf):
+        break
+      else:
+        print(u'输入格式错误, 只能输入数字和逗号, 并且必须以数字结束, 如:1,2,3,4,5')
+
+    ids = buf.split(',')
+    if not (ids and 1 <= len(ids) <= 5):
+      return RET_ERR
+
+    seattype = selectSeatType()
+
+    ids = [int(id) for id in ids]
+    del self.passengers[:]
+    for id in ids:
+      if id < 1 or id > num:
+        print(u'不存在的联系人, 忽略')
+      else:
+        passenger = {}
+        id = id -1
+        passenger['index'] = len(self.passengers) + 1
+        passenger['name'] = self.normal_passengers[id]['passenger_name'] # 必选参数
+        passenger['cardtype'] = self.normal_passengers[id]['passenger_id_type_code'] # 证件类型:可选参数,默认值1,即二代身份证
+        passenger['id'] = self.normal_passengers[id]['passenger_id_no'] # 必选参数
+        passenger['phone'] = self.normal_passengers[id]['mobile_no'] # 手机号码
+        passenger['seattype'] = seattype
+        passenger['tickettype'] = self.normal_passengers[id]['passenger_type'] #票种:可选参数, 默认值1, 即成人票
+        self.passengers.append(passenger)
+    self.printConfig()
+    return RET_OK
 
   def queryTickets(self):
     # 可以省略的步骤
@@ -707,7 +795,7 @@ class MyOrder(object):
     ret = -1
     self.current_train_index = 0
     trains_num = len(self.trains)
-    print u"您可以选择:\n1~%d.选择车次开始订票\nd.更改乘车日期\nf.更改出发站\nt.更改目的站\ns.同时更改出发站和目的站\na.同时更改乘车日期,出发站和目的站\nu.查询未完成订单\nr.刷票模式\nn.普通模式\nq.退出\n刷新车票请直接回车"%(trains_num)
+    print u"您可以选择:\n1~%d.选择车次开始订票\np.更换乘车人\ns.更改席别\nd.更改乘车日期\nf.更改出发站\nt.更改目的站\na.同时更改乘车日期,出发站和目的站\nu.查询未完成订单\nr.刷票模式\nn.普通模式\nq.退出\n刷新车票请直接回车"%(trains_num)
     printDelimiter()
     select = raw_input("")
     if select.isdigit():
@@ -720,6 +808,13 @@ class MyOrder(object):
         index = selectTrain(self.trains)
       ret = index
       self.current_train_index = index - 1
+    elif select == "p" or select == "P":
+      self.selectPassengers()
+    elif select == "s" or select == "S":
+      seattype = selectSeatType()
+      for p in self.passengers:
+        p['seattype'] = seattype
+      self.printConfig()
     elif select == "d" or select == "D":
       self.train_date = inputDate()
     elif select == "f" or select == "F":
@@ -727,13 +822,6 @@ class MyOrder(object):
       self.from_city_name = station['name']
       self.from_station_telecode = station['telecode']
     elif select == "t" or select == "T":
-      station = inputStation(u"请输入目的站:")
-      self.to_city_name = station['name']
-      self.to_station_telecode = station['telecode']
-    elif select == "s" or select == "S":
-      station = inputStation(u"请输入出发站:")
-      self.from_city_name = station['name']
-      self.from_station_telecode = station['telecode']
       station = inputStation(u"请输入目的站:")
       self.to_city_name = station['name']
       self.to_station_telecode = station['telecode']
@@ -855,18 +943,6 @@ class MyOrder(object):
     return RET_OK
 
   def checkOrderInfo(self):
-    # 可以省略的步骤
-    '''
-    url = 'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs'
-    referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-    parameters = [
-      ('_json_att', ''),
-      ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
-    ]
-    postData = urllib.urlencode(parameters)
-    resp = sendPostRequest(url, postData, referer)
-    '''
-
     tries = 0
     while tries < 3:
       tries += 1
@@ -1180,9 +1256,19 @@ def main():
   order.printConfig()
   order.initCookieJar()
   order.loginProc()
+  tries = 0
+  while tries < 2:
+    tries += 1
+    if order.getPassengerDTOs() == RET_OK:
+      break
+  else:
+    print(u'获取乘客信息失败次数太多')
+  if order.selectPassengers() != RET_OK:
+    print(u'选择乘车人失败, 将使用配置文件中的乘客信息')
   print(getTime())
 
   while 1:
+    time.sleep(3)
     # 查询车票
     if order.queryTickets() != RET_OK:
       continue
@@ -1202,8 +1288,8 @@ def main():
     if order.checkOrderInfo() != RET_OK:
       continue
     # 查询排队和余票情况
-    if order.getQueueCount() != RET_OK:
-      continue
+    #if order.getQueueCount() != RET_OK:
+    #  continue
     # 提交订单到队里中
     tries = 0
     while tries < 2:
