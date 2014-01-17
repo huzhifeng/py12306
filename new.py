@@ -30,6 +30,7 @@ seatTypeCodes = [
   ('9', u"商务座"),
   ('M', u"一等座"),
   ('O', u"二等座"),
+  ('B', u"混编硬座"),
   ('P', u"特等座")
 ]
 cardTypeCodes = [
@@ -556,7 +557,7 @@ class MyOrder(object):
       if i > 0 and (i + 1) % 5 == 0:
         print('')
     while 1:
-      print(u'\n请选择乘车人, 最多选择5个, 以逗号隔开, 如:1,2,3,4,5, 直接回车不选择, 使用配置文件中的乘客信息')
+      print(u'\n请选择乘车人, 最多选择5个, 以逗号隔开, 如:1,2,3,4,5, 直接回车不选择')
       buf = raw_input('')
       if not buf:
         return RET_ERR
