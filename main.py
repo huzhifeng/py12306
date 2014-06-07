@@ -74,7 +74,7 @@ def stationInit():
 
   for station in station_list:
     items = station.split('|') # bjb|北京北|VAP|beijingbei|bjb|0
-    stations.append({'abbr':items[0], 'name':items[1], 'telecode':items[2], 'pinyin':items[4]})
+    stations.append({'abbr':items[0], 'name':items[1], 'telecode':items[2], 'pinyin':items[3], 'pyabbr':items[4]})
 
   return stations
 
@@ -83,7 +83,7 @@ def stationInit():
 def getStationByName(name):
   matched_stations = []
   for station in stations:
-    if station['name'] == name or station['abbr'].find(name.lower()) != -1 or station['pinyin'].find(name.lower()) != -1:
+    if station['name'] == name or station['abbr'].find(name.lower()) != -1 or station['pinyin'].find(name.lower()) != -1 or station['pyabbr'].find(name.lower()) != -1:
       matched_stations.append(station)
   count = len(matched_stations)
   if not count:
@@ -539,7 +539,7 @@ class MyOrder(object):
       print(u'获取乘客信息失败')
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-      if obj['data'].has_key('exMsg') and obj['data']['exMsg']: # 打印错误信息
+      if obj.has_key('data') and obj['data'].has_key('exMsg') and obj['data']['exMsg']: # 打印错误信息
         print json.dumps(obj['data']['exMsg'], ensure_ascii=False, indent=2)
       return RET_ERR
     else:
@@ -1021,7 +1021,7 @@ class MyOrder(object):
       print(u"检查订单失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-      if obj['data'].has_key('errMsg') and obj['data']['errMsg']: # 打印错误信息
+      if obj.has_key('data') and obj['data'].has_key('errMsg') and obj['data']['errMsg']: # 打印错误信息
         print json.dumps(obj['data']['errMsg'], ensure_ascii=False, indent=2)
       return RET_ERR
 
@@ -1117,7 +1117,7 @@ class MyOrder(object):
       print(u"等待订单流水号失败")
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-      if obj['data'].has_key('msg') and obj['data']['msg']: # 打印错误信息
+      if obj.has_key('data') and obj['data'].has_key('msg') and obj['data']['msg']: # 打印错误信息
         print json.dumps(obj['data']['msg'], ensure_ascii=False, indent=2)
       return RET_ERR
     self.orderId = obj['data']['orderId']
@@ -1147,7 +1147,7 @@ class MyOrder(object):
     if not (obj and obj['status'] and obj['data'].has_key('submitStatus') and obj['data']['submitStatus']):
       if obj.has_key('messages') and obj['messages']: # 打印错误信息
         print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-      if obj['data'].has_key('errMsg') and obj['data']['errMsg']: # 打印错误信息
+      if obj.has_key('data') and obj['data'].has_key('errMsg') and obj['data']['errMsg']: # 打印错误信息
         print json.dumps(obj['data']['errMsg'], ensure_ascii=False, indent=2)
       return RET_ERR
 
