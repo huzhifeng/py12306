@@ -12,7 +12,6 @@ import re
 import ConfigParser
 import codecs
 import random
-# import logging
 import smtplib
 from email.mime.text import MIMEText
 import time
@@ -511,9 +510,10 @@ class MyOrder(object):
             tries += 1
             print(u"接收登录验证码...")
             url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand'
-            if self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value:
+            jsessionid = self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value
+            if jsessionid:
                 url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew;jsessionid=%s?module=login&rand=sjrand' % (
-                    self.cj._cookies['kyfw.12306.cn']['/otn']['JSESSIONID'].value)
+                    jsessionid)
             self.captcha = getCaptcha(url, 'login', 'sjrand')
 
             print(u"正在校验登录验证码...")
@@ -568,17 +568,6 @@ class MyOrder(object):
             if 'messages' in obj and obj['messages']:  # 打印错误信息
                 print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
             return RET_ERR
-
-        # 可以省略的步骤
-        '''
-    url = "https://kyfw.12306.cn/otn/login/userLogin"
-    referer = "https://kyfw.12306.cn/otn/login/init"
-    parameters = [
-      ('_json_att', ""),
-    ]
-    postData = urllib.urlencode(parameters)
-    resp = sendPostRequest(url, postData, referer)
-    '''
 
         print(u"登陆成功^_^")
         return RET_OK
@@ -657,57 +646,17 @@ class MyOrder(object):
                 passenger = {}
                 id = id - 1
                 passenger['index'] = len(self.passengers) + 1
-                passenger['name'] = self.normal_passengers[
-                    id]['passenger_name']  # 必选参数
-                passenger['cardtype'] = self.normal_passengers[id][
-                    'passenger_id_type_code']  # 证件类型:可选参数,默认值1,即二代身份证
-                passenger['id'] = self.normal_passengers[
-                    id]['passenger_id_no']  # 必选参数
-                passenger['phone'] = self.normal_passengers[
-                    id]['mobile_no']  # 手机号码
+                passenger['name'] = self.normal_passengers[id]['passenger_name']
+                passenger['cardtype'] = self.normal_passengers[id]['passenger_id_type_code']
+                passenger['id'] = self.normal_passengers[id]['passenger_id_no']
+                passenger['phone'] = self.normal_passengers[id]['mobile_no']
                 passenger['seattype'] = seattype
-                passenger['tickettype'] = self.normal_passengers[
-                    id]['passenger_type']  # 票种:可选参数, 默认值1, 即成人票
+                passenger['tickettype'] = self.normal_passengers[id]['passenger_type']
                 self.passengers.append(passenger)
         self.printConfig()
         return RET_OK
 
     def queryTickets(self):
-        # 可以省略的步骤
-        '''
-        url = 'https://kyfw.12306.cn/otn/index/init'
-        referer = 'https://kyfw.12306.cn/otn/login/init'
-        resp = sendGetRequest(url, referer)
-        '''
-
-        # 可以省略的步骤
-        '''
-    url = "https://kyfw.12306.cn/otn/leftTicket/init"
-    referer = "https://kyfw.12306.cn/otn/index/init"
-    parameters = [
-      ('_json_att', ''),
-      ('leftTicketDTO.from_station_name', self.from_city_name),
-      ('leftTicketDTO.to_station_name', self.to_city_name),
-      ('leftTicketDTO.from_station', self.from_station_telecode),
-      ('leftTicketDTO.to_station', self.to_station_telecode),
-      ('leftTicketDTO.train_date', self.train_date),
-      ('back_train_date', self.back_train_date),
-      ('flag', self.tour_flag),
-      ('purpose_code', self.purpose_code),
-      ('pre_step_flag', 'index'),
-    ]
-    postData = urllib.urlencode(parameters)
-    resp = sendPostRequest(url, postData, referer)
-    try:
-      data = resp.read()
-    except:
-      print(u"查询车票初始化异常")
-      return RET_ERR
-    '''
-
-        # 可以省略的步骤
-        # self.captcha = getCaptcha('https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand', 'login', 'sjrand')
-
         url = 'https://kyfw.12306.cn/otn/leftTicket/query?'
         referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
         parameters = [
@@ -949,30 +898,6 @@ class MyOrder(object):
         return ret
 
     def initOrder(self):
-        # 可以省略的步骤
-        # 检查登录
-        '''
-        url = 'https://kyfw.12306.cn/otn/login/checkUser'
-        referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
-        parameters = [
-          ('_json_att', ''),
-        ]
-        postData = urllib.urlencode(parameters)
-        resp = sendPostRequest(url, postData, referer)
-        try:
-          data = resp.read()
-        except:
-          print(u"检查登录异常")
-          return RET_ERR
-        # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"flag":true},"messages":[],"validateMessages":{}}
-        obj = data2Json(data, ('status', 'httpstatus', 'data'))
-        if not (obj and obj['data'].has_key('flag') and obj['data']['flag']):
-          print(u"你好像还没有登录哦")
-          if obj.has_key('messages') and obj['messages']: # 打印错误信息
-            print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
-          return RET_ERR
-        '''
-
         print(u"准备下单喽")
         url = 'https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest'
         referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
@@ -1211,7 +1136,7 @@ class MyOrder(object):
                 print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
             return RET_ERR
 
-        print(u"订单排队中, 先别激动，接下来看你的运气和人品了")
+        print(u"订单排队中...")
         return RET_OK
 
     def queryOrderWaitTime(self):
@@ -1236,9 +1161,13 @@ class MyOrder(object):
                 print json.dumps(obj['data']['msg'], ensure_ascii=False, indent=2)
             return RET_ERR
         self.orderId = obj['data']['orderId']
-        print(u"订单流水号为:")
-        print(self.orderId)
-        return RET_OK
+        if (self.orderId and self.orderId != 'null'):
+            print(u"订单流水号为:")
+            print(self.orderId)
+            return RET_OK
+        else:
+            print(u"等待订单流水号失败")
+            return RET_ERR
 
     def payOrder(self):
         print(u"等待订票结果...")
@@ -1289,21 +1218,6 @@ class MyOrder(object):
             return RET_ERR
 
     def queryMyOrderNotComplete(self):
-        # 可以省略的步骤
-        '''
-        url = 'https://kyfw.12306.cn/otn/queryOrder/initNoComplete'
-        referer = 'https://kyfw.12306.cn/otn//payOrder/init?random=%13d'%(random.randint(1000000000000,1999999999999))
-        resp = sendGetRequest(url, referer)
-        try:
-          data = resp.read()
-        except:
-          print(u"请求异常")
-          return RET_ERR
-        if data.find(u'总张数') != -1 and data.find(u'待支付金额') != -1:
-          print u"订票成功^_^请在45分钟内完成订单,否则系统将自动取消"
-          return RET_OK
-        '''
-
         url = 'https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete'
         referer = 'https://kyfw.12306.cn/otn/queryOrder/initNoComplete'
         parameters = [
@@ -1336,14 +1250,6 @@ class MyOrder(object):
 
 def main():
     print(getTime())
-    '''
-  logging.basicConfig(level=logging.DEBUG,
-            format='%(asctime)s %(filename)s %(funcName)s[line:%(lineno)d] %(levelname)s %(message)s',
-            datefmt='%Y-%m-%d %X',
-            filename='log.txt',
-            filemode='w')
-  logging.debug('Start')
-  '''
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -1436,7 +1342,6 @@ def main():
             break
 
     raw_input('Press any key to continue')
-    # logging.debug('End')
     print(getTime())
 
 if __name__ == "__main__":
