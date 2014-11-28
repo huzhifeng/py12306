@@ -198,7 +198,16 @@ def checkDate(date):
     m = re.match(r'^\d{4}-\d{2}-\d{2}$', date)  # 2014-01-01
 
     if m:
-        return 1
+        today = datetime.datetime.now()
+        fmt = "%Y-%m-%d"
+        today = datetime.datetime.strptime(today.strftime(fmt), fmt)
+        train_date = datetime.datetime.strptime(m.group(0), fmt)
+        delta = train_date - today
+        if delta.days < 0:
+            print(u'乘车日期%s无效, 只能预订%s以后的车票' % (train_date.strftime(fmt), today.strftime(fmt)))
+            return 0
+        else:
+            return 1
     else:
         return 0
 
@@ -229,8 +238,6 @@ def inputDate(prompt=u"请选择乘车日期(最多提前20天预订):"):
         train_date = "%04d-%02d-%02d" % (available_date[index].year, available_date[index].month, available_date[index].day)
         if checkDate(train_date):
             break
-        else:
-            print u"格式错误,请重新输入有效的乘车日期,如2014-02-01:"
 
     return train_date
 
@@ -497,9 +504,17 @@ class MyOrder(object):
         print u"订票信息:"
         print u"%s\t%s\t%s--->%s" % (self.username, self.train_date, self.from_city_name, self.to_city_name)
         printDelimiter()
-        print u"序号 姓名\t证件类型\t证件号码\t\t席别\t票种\t"
+        th = [u'序号', u'姓名', u'证件类型', u'证件号码', u'席别', u'票种']
+        print(u'%s\t%s\t%s\t%s\t%s\t%s' % (th[0].ljust(2), th[1].ljust(4), th[2].ljust(5),
+                                           th[3].ljust(12), th[4].ljust(2), th[5].ljust(3)))
         for p in self.passengers:
-            print u"%d  %s\t%s\t%s\t%s\t%s" % (p['index'], p['name'].decode("utf-8", "ignore"), getCardType(p['cardtype']), p['id'], getSeatType(p['seattype']), getTicketType(p['tickettype']))
+            print(u"%s\t%s\t%s\t%s\t%s\t%s" % (
+                p['index'],
+                p['name'].decode("utf-8", "ignore").ljust(4),
+                getCardType(p['cardtype']).ljust(5),
+                p['id'].ljust(20),
+                getSeatType(p['seattype']).ljust(2),
+                getTicketType(p['tickettype']).ljust(3)))
 
     def initCookieJar(self):
         self.cj = cookielib.CookieJar()
