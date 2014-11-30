@@ -563,7 +563,7 @@ class MyOrder(object):
             # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
             # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"N","messages":[],"validateMessages":{}}
             obj = data2Json(data, ('status', 'httpstatus', 'data'))
-            if not (obj and obj['status'] and (obj['data'] == 'Y')):
+            if not (obj and obj['status'] and (obj['data']['result'] == '1')):
                 print(u"校验登录验证码失败")
                 if 'messages' in obj and obj['messages']:  # 打印错误信息
                     print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
@@ -1026,7 +1026,7 @@ class MyOrder(object):
                 continue
             # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":"Y","messages":[],"validateMessages":{}}
             obj = data2Json(data, ('status', 'httpstatus', 'data'))
-            if not (obj and obj['status'] and (obj['data'] == 'Y')):
+            if not (obj and obj['status'] and (obj['data']['result'] == '1')):
                 print(u"校验订单验证码失败")
                 if 'messages' in obj and obj['messages']:  # 打印错误信息
                     print json.dumps(obj['messages'], ensure_ascii=False, indent=2)
