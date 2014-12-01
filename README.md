@@ -12,6 +12,9 @@ Usage
 '-m', '--mail', '可选参数, 开启邮件提醒(用于节假日抢票时自动刷票提醒)'
 </pre>  
 
+安装依赖包:
+`pip install huzhifeng`
+
 直接运行:   
 `python py12306.py`  
 或者指定参数:  
