@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+# 标准库
 import argparse
 import urllib
 import time
@@ -12,16 +13,22 @@ import random
 import smtplib
 from email.mime.text import MIMEText
 
+# 第三方库
 import requests
 from huzhifeng import dumpObj, hasKeys
 
-# Global variables
+# Set default encoding to utf-8
+reload(sys)
+sys.setdefaultencoding('utf-8')
+requests.packages.urllib3.disable_warnings()
+
+# 全局变量
 RET_OK = 0
 RET_ERR = -1
 MAX_TRIES = 3
 MAX_DAYS = 20
 stations = []
-seatTypeCodes = [
+seatMaps = [
     ('1', u'硬座'),  # 硬座/无座
     ('3', u'硬卧'),
     ('4', u'软卧'),
@@ -33,26 +40,111 @@ seatTypeCodes = [
     ('B', u'混编硬座'),
     ('P', u'特等座')
 ]
-cardTypeCodes = [
-    ('1', u'二代身份证'),
-    ('2', u'一代身份证'),
-    ('C', u'港澳通行证'),
-    ('G', u'台湾通行证'),
-    ('B', u'护照')
-]
-
-# Set default encoding to utf-8
-reload(sys)
-sys.setdefaultencoding('utf-8')
-requests.packages.urllib3.disable_warnings()
 
 
+# 全局函数
 def printDelimiter():
     print('-' * 64)
 
 
-# ------------------------------------------------------------------------------
-# Convert station object by name or abbr or pinyin
+def getTime():
+    return time.strftime('%Y-%m-%d %X', time.localtime())  # 2014-01-01 12:00:00
+
+
+def date2UTC(d):
+    # Convert '2014-01-01' to 'Wed Jan 01 00:00:00 UTC+0800 2014'
+    t = time.strptime(d, '%Y-%m-%d')
+    asc = time.asctime(t)  # 'Wed Jan 01 00:00:00 2014'
+    # 'Wed Jan 01 00:00:00 UTC+0800 2014'
+    return (asc[0:-4] + 'UTC+0800 ' + asc[-4:])
+
+
+def getCardType(key):
+    d = {
+        '1': u'二代身份证',
+        '2': u'一代身份证',
+        'C': u'港澳通行证',
+        'G': u'台湾通行证',
+        'B': u'护照'
+    }
+    return d[key] if key in d else u'未知证件类型'
+
+
+def getTicketType(key):
+    d = {
+        '1': u'成人票',
+        '2': u'儿童票',
+        '3': u'学生票',
+        '4': u'残军票'
+    }
+    return d[key] if key in d else u'未知票种'
+
+
+def getSeatType(key):
+    d = dict(seatMaps)
+    return d[key] if key in d else u'未知席别'
+
+
+def selectSeatType():
+    key = '1'  # 默认硬座
+    while True:
+        print(u'请选择席别(左边第一个英文字母):')
+        for xb in seatMaps:
+            print(u'%s: %s' % (xb[0], xb[1]))
+        key = raw_input().upper()
+        d = dict(seatMaps)
+        if key in d:
+            return key
+        else:
+            print(u'无效的席别类型!')
+
+
+def checkDate(date):
+    m = re.match(r'^\d{4}-\d{2}-\d{2}$', date)  # 2014-01-01
+    if m:
+        today = datetime.datetime.now()
+        fmt = '%Y-%m-%d'
+        today = datetime.datetime.strptime(today.strftime(fmt), fmt)
+        train_date = datetime.datetime.strptime(m.group(0), fmt)
+        delta = train_date - today
+        if delta.days < 0:
+            print(u'乘车日期%s无效, 只能预订%s以后的车票' % (
+                train_date.strftime(fmt),
+                today.strftime(fmt)))
+            return False
+        else:
+            return True
+    else:
+        return False
+
+
+def selectDate():
+    train_date = None
+    index = 0
+    week_days = [u'星期一', u'星期二', u'星期三', u'星期四', u'星期五', u'星期六', u'星期天']
+    now = datetime.datetime.now()
+    available_date = [(now + datetime.timedelta(days=i)) for i in xrange(MAX_DAYS)]
+    for i in xrange(MAX_DAYS):
+        print(u'%2d: %04d-%02d-%02d(%s)' % (
+            i, available_date[i].year, available_date[i].month,
+            available_date[i].day, week_days[available_date[i].weekday()]))
+
+    while True:
+        print(u'请选择乘车日期(1~%d)' % (MAX_DAYS))
+        index = raw_input()
+        if not index.isdigit():
+            print(u'只能输入数字序号, 请重新选择乘车日期(1~%d)' % (MAX_DAYS))
+            continue
+        index = int(index)
+        if index < 1 or index > MAX_DAYS:
+            print(u'输入的序号无效, 请重新选择乘车日期(1~%d)' % (MAX_DAYS))
+            continue
+        index -= 1
+        train_date = '%04d-%02d-%02d' % (
+            available_date[index].year,
+            available_date[index].month,
+            available_date[index].day)
+        return train_date
 
 
 def getStationByName(name):
@@ -65,7 +157,7 @@ def getStationByName(name):
                 or station['pyabbr'].find(name.lower()) != -1):
             matched_stations.append(station)
     count = len(matched_stations)
-    if not count:
+    if count <= 0:
         return None
     elif count == 1:
         return matched_stations[0]
@@ -84,156 +176,16 @@ def getStationByName(name):
         else:
             return matched_stations[index - 1]
 
-# ------------------------------------------------------------------------------
-# Get current time with format 2014-01-01 12:00:00
 
-
-def getTime():
-    return time.strftime('%Y-%m-%d %X', time.localtime())
-
-# ------------------------------------------------------------------------------
-# Get current date with format 2014-01-01
-
-
-def getDate():
-    return time.strftime('%Y-%m-%d', time.localtime())
-
-# Convert '2014-01-01' to 'Wed Jan 01 00:00:00 UTC+0800 2014'
-
-
-def trainDate(d):
-    t = time.strptime(d, '%Y-%m-%d')
-    asc = time.asctime(t)  # 'Wed Jan 01 00:00:00 2014'
-    # 'Wed Jan 01 00:00:00 UTC+0800 2014'
-    return (asc[0:-4] + 'UTC+0800 ' + asc[-4:])
-
-# ------------------------------------------------------------------------------
-# 证件类型
-
-
-def getCardType(cardtype):
-    d = dict(cardTypeCodes)
-
-    if cardtype in d:
-        return d[cardtype]
-    else:
-        return u'未知证件类型'
-
-# ------------------------------------------------------------------------------
-# 席别:
-
-
-def getSeatType(seattype):
-    d = dict(seatTypeCodes)
-
-    if seattype in d:
-        return d[seattype]
-    else:
-        return u'未知席别'
-
-
-def selectSeatType():
-    seattype = '1'  # 默认硬座
+def inputStation():
     while True:
-        print(u'请选择席别(注意大小写):')
-        for xb in seatTypeCodes:
-            print(u'%s:%s' % (xb[0], xb[1]))
-        seattype = raw_input()
-        d = dict(seatTypeCodes)
-        if seattype in d:
-            return seattype
-        else:
-            print(u'无效的席别类型!')
-
-# ------------------------------------------------------------------------------
-# 票种类型
-
-
-def getTicketType(tickettype):
-    d = {
-        '1': u'成人票',
-        '2': u'儿童票',
-        '3': u'学生票',
-        '4': u'残军票'
-    }
-
-    if tickettype in d:
-        return d[tickettype]
-    else:
-        return u'未知票种'
-
-# ------------------------------------------------------------------------------
-# Check date format
-
-
-def checkDate(date):
-    m = re.match(r'^\d{4}-\d{2}-\d{2}$', date)  # 2014-01-01
-
-    if m:
-        today = datetime.datetime.now()
-        fmt = '%Y-%m-%d'
-        today = datetime.datetime.strptime(today.strftime(fmt), fmt)
-        train_date = datetime.datetime.strptime(m.group(0), fmt)
-        delta = train_date - today
-        if delta.days < 0:
-            print(u'乘车日期%s无效, 只能预订%s以后的车票' % (
-                train_date.strftime(fmt),
-                today.strftime(fmt)))
-            return 0
-        else:
-            return 1
-    else:
-        return 0
-
-# ------------------------------------------------------------------------------
-# Input date
-
-
-def inputDate(prompt=''):
-    train_date = ''
-    index = 0
-    week_days = [u'星期一', u'星期二', u'星期三', u'星期四', u'星期五', u'星期六', u'星期天']
-    now = datetime.datetime.now()
-    available_date = [(now + datetime.timedelta(days=i)) for i in xrange(MAX_DAYS)]
-    for i in xrange(MAX_DAYS):
-        print(u'%2d: %04d-%02d-%02d(%s)' % (
-            i, available_date[i].year, available_date[i].month,
-            available_date[i].day, week_days[available_date[i].weekday()]))
-
-    while True:
-        print(u'%s(请选择乘车日期0~%d)' % (prompt, (MAX_DAYS - 1)))
-        index = raw_input()
-        if not index.isdigit():
-            print(u'只能输入数字序号,请重新选择乘车日期(0~%d)' % (MAX_DAYS - 1))
-            continue
-        index = int(index)
-        if index < 0 or index >= MAX_DAYS:
-            print(u'输入的序号无效,请重新选择乘车日期(0~%d)' % (MAX_DAYS - 1))
-            continue
-        train_date = '%04d-%02d-%02d' % (
-            available_date[index].year,
-            available_date[index].month,
-            available_date[index].day)
-        if checkDate(train_date):
-            break
-
-    return train_date
-
-# ------------------------------------------------------------------------------
-# Input station
-
-
-def inputStation(prompt=''):
-    station = None
-    print(u'%s (支持中文,拼音和拼音缩写,如:北京,beijing,bj)' % (prompt))
-
-    while True:
+        print(u'支持中文, 拼音和拼音缩写(如: 北京,beijing,bj)')
         name = raw_input().decode('gb2312', 'ignore')
         station = getStationByName(name)
         if station:
             return station
         else:
-            print(u'站点错误,没有站点"%s",请重新输入:' % (name))
+            print(u'站点错误, 没有站点"%s", 请重新输入.' % (name))
 
 
 def selectTrain(trains):
@@ -273,7 +225,8 @@ class MyOrder(object):
         self.username = username  # 账号
         self.password = password  # 密码
         self.train_date = train_date  # 乘车日期[2014-01-01]
-        self.back_train_date = getDate()  # 返程日期[2014-01-01]
+        today = datetime.datetime.now()
+        self.back_train_date = today.strftime('%Y-%m-%d')  # 返程日期[2014-01-01]
         self.tour_flag = 'dc'  # 单程dc/往返wf
         self.purpose_code = 'ADULT'  # 成人票
         self.from_city_name = from_city_name  # 对应查询界面'出发地'输入框中的内容
@@ -329,7 +282,6 @@ class MyOrder(object):
                 print('RequestException(%s): e=%s' % (url, e))
             except:
                 print('Unknown exception(%s)' % (url))
-
             if r.status_code != 200:
                 print('Request %s failed %d times, status_code=%d' % (
                     url,
@@ -359,7 +311,6 @@ class MyOrder(object):
                 print('RequestException(%s): e=%s' % (url, e))
             except:
                 print('Unknown exception(%s)' % (url))
-
             if r.status_code != 200:
                 print('Request %s failed %d times, status_code=%d' % (
                     url,
@@ -371,7 +322,7 @@ class MyOrder(object):
             return None
 
     def getCaptcha(self, url, module, rand):
-        rand_url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do?module=%s&rand=%s' % (module, rand)
+        rand_url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=%s&rand=%s' % (module, rand)
         captcha = ''
         while True:
             r = self.session.get(url, verify=False, stream=True, timeout=16)
@@ -383,12 +334,6 @@ class MyOrder(object):
             captcha = raw_input()
             if len(captcha) == 4:
                 return captcha
-
-    # ------------------------------------------------------------------------------
-    # 火车站点数据库初始化
-    # 全部站点, 数据来自: https://kyfw.12306.cn/otn/resources/js/framework/station_name.js
-    # 每个站的格式如下:
-    # @bji|北京|BJP|beijing|bj|2   ---> @拼音缩写三位|站点名称|编码|拼音|拼音缩写|序号
 
     def initStation(self):
         url = 'https://kyfw.12306.cn/otn/resources/js/framework/station_name.js'
@@ -404,9 +349,8 @@ class MyOrder(object):
             print(u'站点数据库初始化失败, 数据异常')
             return None
         station_list = station_list[1:]
-
         for station in station_list:
-            items = station.split('|')  # bjb|北京北|VAP|beijingbei|bjb|0
+            items = station.split('|')  # bji|北京|BJP|beijing|bj|2
             if len(items) < 5:
                 print(u'忽略无效站点: %s' % (items))
                 continue
@@ -415,7 +359,6 @@ class MyOrder(object):
                              'telecode': items[2],
                              'pinyin': items[3],
                              'pyabbr': items[4]})
-
         return stations
 
     def readConfig(self, config_file='config.ini'):
@@ -445,18 +388,21 @@ class MyOrder(object):
         # 检查出发站
         station = getStationByName(self.from_city_name)
         if not station:
-            station = inputStation(u'出发站错误,请重新输入:')
+            print(u'出发站错误, 请重新输入')
+            station = inputStation()
         self.from_city_name = station['name']
         self.from_station_telecode = station['telecode']
         # 检查目的站
         station = getStationByName(self.to_city_name)
         if not station:
-            station = inputStation(u'目的站错误,请重新输入:')
+            print(u'目的站错误,请重新输入')
+            station = inputStation()
         self.to_city_name = station['name']
         self.to_station_telecode = station['telecode']
         # 检查乘车日期
         if not checkDate(self.train_date):
-            self.train_date = inputDate(u'乘车日期错误,请重新输入:')
+            print(u'乘车日期无效, 请重新选择')
+            self.train_date = selectDate()
         # 分析乘客信息
         self.passengers = []
         index = 1
@@ -531,7 +477,7 @@ class MyOrder(object):
         while tries < MAX_TRIES:
             tries += 1
             print(u'接收登录验证码...')
-            url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand'
+            url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand&'
             self.captcha = self.getCaptcha(url, 'login', 'sjrand')
             print(u'正在校验登录验证码...')
             url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
@@ -545,7 +491,6 @@ class MyOrder(object):
                 print(u'登录失败, 校验登录验证码异常')
                 continue
             # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"result":"1","msg":"randCodeRight"},"messages":[],"validateMessages":{}}
-            # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"result":"0","msg":"randCodeError"},"messages":[],"validateMessages":{}}
             obj = r.json()
             if (
                     hasKeys(obj, ['status', 'httpstatus', 'data'])
@@ -587,17 +532,6 @@ class MyOrder(object):
             print(u'登陆失败啦!重新登陆...')
             dumpObj(obj)
             return RET_ERR
-
-    def loginProc(self):
-        tries = 0
-        while tries < MAX_TRIES:
-            tries += 1
-            printDelimiter()
-            if self.login() == RET_OK:
-                break
-        else:
-            print(u'失败次数太多,自动退出程序')
-            sys.exit()
 
     def getPassengerDTOs(self):
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs'
@@ -916,21 +850,25 @@ class MyOrder(object):
                 p['seattype'] = seattype
             self.printConfig()
         elif select == 'd':
-            self.train_date = inputDate()
+            self.train_date = selectDate()
         elif select == 'f':
-            station = inputStation(u'请输入出发站:')
+            print(u'请输入出发站:')
+            station = inputStation()
             self.from_city_name = station['name']
             self.from_station_telecode = station['telecode']
         elif select == 't':
-            station = inputStation(u'请输入目的站:')
+            print(u'请输入目的站:')
+            station = inputStation()
             self.to_city_name = station['name']
             self.to_station_telecode = station['telecode']
         elif select == 'a':
-            self.train_date = inputDate()
-            station = inputStation(u'请输入出发站:')
+            self.train_date = selectDate()
+            print(u'请输入出发站:')
+            station = inputStation()
             self.from_city_name = station['name']
             self.from_station_telecode = station['telecode']
-            station = inputStation(u'请输入目的站:')
+            print(u'请输入目的站:')
+            station = inputStation()
             self.to_city_name = station['name']
             self.to_station_telecode = station['telecode']
         elif select == 'u':
@@ -1022,7 +960,7 @@ class MyOrder(object):
             tries += 1
             print(u'接收订单验证码...')
             self.captcha = self.getCaptcha(
-                'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp',
+                'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&',
                 'passenger',
                 'randp')
 
@@ -1121,7 +1059,7 @@ class MyOrder(object):
         self.session.headers.update({'Referer': referer})
         t = self.trains[self.current_train_index]['queryLeftNewDTO']
         parameters = [
-            ('train_date', trainDate(self.train_date)),
+            ('train_date', date2UTC(self.train_date)),
             ('train_no', t['train_no']),
             ('stationTrainCode', t['station_train_code']),
             ('seatType', '1'),  # TODO
@@ -1325,13 +1263,19 @@ def main():
         if checkDate(args.date):
             order.train_date = args.date  # 使用指定的乘车日期代替配置文件中的乘车日期
         else:
-            order.train_date = inputDate(u'乘车日期错误,请重新输入:')
+            print(u'乘车日期无效, 请重新选择')
+            order.train_date = selectDate()
     if args.mail:
         # 有票时自动发送邮件通知
         order.notify['mail_enable'] = 1 if args.mail == '1' else 0
-
-    order.printConfig()
-    order.loginProc()
+    tries = 0
+    while tries < MAX_TRIES:
+        tries += 1
+        if order.login() == RET_OK:
+            break
+    else:
+        print(u'失败次数太多,自动退出程序')
+        sys.exit()
     order.selectPassengers(1)
 
     while True:
@@ -1377,8 +1321,8 @@ def main():
             print(u'订票成功^_^请在45分钟内完成网上支付,否则系统将自动取消')
             break
 
-    raw_input('Press any key to continue')
     print(getTime())
+    raw_input('Press any key to continue')
 
 if __name__ == '__main__':
     main()
