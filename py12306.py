@@ -26,7 +26,7 @@ requests.packages.urllib3.disable_warnings()
 RET_OK = 0
 RET_ERR = -1
 MAX_TRIES = 3
-MAX_DAYS = 20
+MAX_DAYS = 60
 stations = []
 seatMaps = [
     ('1', u'硬座'),  # 硬座/无座
@@ -119,16 +119,18 @@ def checkDate(date):
 
 
 def selectDate():
-    train_date = None
-    index = 0
+    fmt = '%Y-%m-%d'
     week_days = [u'星期一', u'星期二', u'星期三', u'星期四', u'星期五', u'星期六', u'星期天']
     now = datetime.datetime.now()
     available_date = [(now + datetime.timedelta(days=i)) for i in xrange(MAX_DAYS)]
-    for i in xrange(MAX_DAYS):
-        print(u'%2d: %04d-%02d-%02d(%s)' % (
-            i, available_date[i].year, available_date[i].month,
-            available_date[i].day, week_days[available_date[i].weekday()]))
-
+    for i in xrange(0, MAX_DAYS, 2):
+        print(u'第%2d天: %s(%s)' % (
+            i + 1, available_date[i].strftime(fmt), week_days[available_date[i].weekday()])),
+        if i + 1 < MAX_DAYS:
+            print(u'\t\t第%2d天: %s(%s)' % (
+                i + 2, available_date[i + 1].strftime(fmt), week_days[available_date[i + 1].weekday()]))
+        else:
+            print('')
     while True:
         print(u'请选择乘车日期(1~%d)' % (MAX_DAYS))
         index = raw_input()
@@ -140,10 +142,7 @@ def selectDate():
             print(u'输入的序号无效, 请重新选择乘车日期(1~%d)' % (MAX_DAYS))
             continue
         index -= 1
-        train_date = '%04d-%02d-%02d' % (
-            available_date[index].year,
-            available_date[index].month,
-            available_date[index].day)
+        train_date = available_date[index].strftime(fmt)
         return train_date
 
 
@@ -254,17 +253,181 @@ class MyOrder(object):
     def initSession(self):
         self.session = requests.Session()
         self.session.headers = {
-            'Accept': 'image/jpeg, application/x-ms-application, image/gif, application/xaml+xml, image/pjpeg, application/x-ms-xbap, application/x-shockwave-flash, application/vnd.ms-excel, application/vnd.ms-powerpoint, application/msword, */*',
-            'Accept-Encoding': 'deflate',
+            'Accept': 'application/x-ms-application, image/jpeg, application/xaml+xml, image/gif, image/pjpeg, application/x-ms-xbap, */*',
+            'Accept-Encoding': 'gzip, deflate',
             'Accept-Language': 'zh-CN',
-            'User-Agent': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/6.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.2; .NET4.0C; .NET4.0E; MALC)',
+            'User-Agent': 'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C)',
             'Referer': 'https://kyfw.12306.cn/otn/index/init',
             'Host': 'kyfw.12306.cn',
             'Connection': 'Keep-Alive'
         }
 
+    def updateHeaders(self, url):
+        d = {
+            'https://kyfw.12306.cn/otn/resources/js/framework/station_name.js': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/'
+            },
+            'https://kyfw.12306.cn/otn/login/init': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/'
+            },
+            'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand&': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/login/init'
+            },
+            'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
+            },
+            'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/login/init',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/login/loginAysnSuggest': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/login/init',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/login/userLogin': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/login/init'
+            },
+            'https://kyfw.12306.cn/otn/index/init': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/login/init'
+            },
+            'https://kyfw.12306.cn/otn/leftTicket/init': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/index/init',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            'https://kyfw.12306.cn/otn/leftTicket/log?': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
+                'x-requested-with': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache',
+                'If-Modified-Since': '0'
+            },
+            'https://kyfw.12306.cn/otn/leftTicket/query?': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
+                'x-requested-with': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache',
+                'If-Modified-Since': '0'
+            },
+            'https://kyfw.12306.cn/otn/login/checkUser': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
+                'Cache-Control': 'no-cache',
+                'If-Modified-Since': '0',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/initDc': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Cache-Control': 'no-cache'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'x-requested-with': 'XMLHttpRequest'
+            },
+            'https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            'https://kyfw.12306.cn/otn//payOrder/init?': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc',
+                'Cache-Control': 'no-cache',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            'https://kyfw.12306.cn/otn/queryOrder/initNoComplete': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn//payOrder/init?random=1417862054369'
+            },
+            'https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete': {
+                'method': 'POST',
+                'Referer': 'https://kyfw.12306.cn/otn/queryOrder/initNoComplete',
+                'Cache-Control': 'no-cache',
+                'x-requested-with': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            }
+        }
+        l = [
+            'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand&',
+            'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&',
+            'https://kyfw.12306.cn/otn/leftTicket/log?',
+            'https://kyfw.12306.cn/otn/leftTicket/query?',
+            'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?',
+            'https://kyfw.12306.cn/otn//payOrder/init?'
+        ]
+        for s in l:
+            if url.find(s) == 0:
+                url = s
+        if not url in d:
+            print(u'未知 url: %s' % url)
+            return RET_ERR
+        self.session.headers.update({'Referer': d[url]['Referer']})
+        keys = [
+            'Referer',
+            'Cache-Control',
+            'x-requested-with',
+            'Content-Type'
+        ]
+        for key in keys:
+            if key in d[url]:
+                self.session.headers.update({key: d[url][key]})
+            else:
+                self.session.headers.update({key: None})
     def get(self, url):
-        self.session.headers.update({'Content-Type': None})
+        self.updateHeaders(url)
         tries = 0
         while tries < MAX_TRIES:
             tries += 1
@@ -293,7 +456,12 @@ class MyOrder(object):
             return None
 
     def post(self, url, payload):
-        self.session.headers.update({'Content-Type': 'application/x-www-form-urlencoded'})
+        self.updateHeaders(url)
+        if url == 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn':
+            if payload.find('REPEAT_SUBMIT_TOKEN') != -1:
+                self.session.headers.update({'Referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'})
+            else:
+                self.session.headers.update({'Referer': 'https://kyfw.12306.cn/otn/login/init'})
         tries = 0
         while tries < MAX_TRIES:
             tries += 1
@@ -321,24 +489,23 @@ class MyOrder(object):
         else:
             return None
 
-    def getCaptcha(self, url, module, rand):
-        rand_url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=%s&rand=%s' % (module, rand)
-        captcha = ''
-        while True:
-            r = self.session.get(url, verify=False, stream=True, timeout=16)
-            with open('captcha.gif', 'wb') as fd:
-                for chunk in r.iter_content():
-                    fd.write(chunk)
-            print(u'请输入4位图片验证码(直接回车刷新):')
-            url = '%s&%1.16f' % (rand_url, random.random())
-            captcha = raw_input()
-            if len(captcha) == 4:
-                return captcha
+    def getCaptcha(self, url):
+        self.updateHeaders(url)
+        r = self.session.get(url, verify=False, stream=True, timeout=16)
+        with open('captcha.gif', 'wb') as fd:
+            for chunk in r.iter_content():
+                fd.write(chunk)
+        print(u'请输入4位图片验证码(回车刷新):')
+        captcha = raw_input()
+        if len(captcha) == 4:
+            return captcha
+        else:
+            if len(captcha) != 0:
+                print(u'%s是无效的图片验证码, 必须是4位' % (captcha))
+            return None
 
     def initStation(self):
         url = 'https://kyfw.12306.cn/otn/resources/js/framework/station_name.js'
-        referer = 'https://kyfw.12306.cn/otn/'
-        self.session.headers.update({'Referer': referer})
         r = self.get(url)
         if not r:
             print(u'站点数据库初始化失败, 请求异常')
@@ -367,8 +534,8 @@ class MyOrder(object):
             cp.readfp(open(config_file, 'r'))
         except IOError as e:
             print(u'打开配置文件"%s"失败啦, 请先创建或者拷贝一份配置文件config.ini' % (config_file))
-            if raw_input('Press any key to continue'):
-                sys.exit()
+            raw_input('Press any key to continue')
+            sys.exit()
         self.username = cp.get('login', 'username')
         self.password = cp.get('login', 'password')
         self.train_date = cp.get('train', 'date')
@@ -458,10 +625,63 @@ class MyOrder(object):
                 getSeatType(p['seattype']).ljust(2),
                 getTicketType(p['tickettype']).ljust(3)))
 
+    def checkRandCodeAnsyn(self, module):
+        d = {
+            'login': {  # 登陆验证码
+                'rand': 'sjrand',
+                'referer': 'https://kyfw.12306.cn/otn/login/init'
+            },
+            'passenger': {  # 订单验证码
+                'rand': 'randp',
+                'referer': 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
+            }
+        }
+        if not module in d:
+            print(u'无效的 module: %s' % (module))
+            return RET_ERR
+        tries = 0
+        while tries < MAX_TRIES:
+            tries += 1
+            url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=%s&rand=%s&' % (module, d[module]['rand'])
+            if tries > 1:
+                url = '%s%1.16f' % (url, random.random())
+            print(u'正在等待验证码...')
+            self.captcha = self.getCaptcha(url)
+            if not self.captcha:
+                continue
+            url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
+            parameters = [
+                ('randCode', self.captcha),
+                ('rand', d[module]['rand'])
+            ]
+            if module == 'login':
+                parameters.append(('randCode_validate', ''))
+            else:
+                parameters.append(('_json_att', ''))
+                parameters.append(('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken))
+            payload = urllib.urlencode(parameters)
+            print(u'正在校验验证码...')
+            r = self.post(url, payload)
+            if not r:
+                print(u'校验验证码异常')
+                continue
+            # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"result":"1","msg":"randCodeRight"},"messages":[],"validateMessages":{}}
+            obj = r.json()
+            if (
+                    hasKeys(obj, ['status', 'httpstatus', 'data'])
+                    and hasKeys(obj['data'], ['result', 'msg'])
+                    and (obj['data']['result'] == '1')):
+                print(u'校验验证码成功')
+                return RET_OK
+            else:
+                print(u'校验验证码失败')
+                dumpObj(obj)
+                continue
+        else:
+            return RET_ERR
+
     def login(self):
         url = 'https://kyfw.12306.cn/otn/login/init'
-        referer = 'https://kyfw.12306.cn/otn/'
-        self.session.headers.update({'Referer': referer})
         r = self.get(url)
         if not r:
             print(u'登录失败, 请求异常')
@@ -471,49 +691,18 @@ class MyOrder(object):
             if cookies['JSESSIONID']:
                 self.jsessionid = cookies['JSESSIONID']
 
-        tries = 0
-        referer = 'https://kyfw.12306.cn/otn/login/init'
-        self.session.headers.update({'Referer': referer})
-        while tries < MAX_TRIES:
-            tries += 1
-            print(u'接收登录验证码...')
-            url = 'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=login&rand=sjrand&'
-            self.captcha = self.getCaptcha(url, 'login', 'sjrand')
-            print(u'正在校验登录验证码...')
-            url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
-            parameters = [
-                ('randCode', self.captcha),
-                ('rand', 'sjrand'),
-            ]
-            payload = urllib.urlencode(parameters)
-            r = self.post(url, payload)
-            if not r:
-                print(u'登录失败, 校验登录验证码异常')
-                continue
-            # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"result":"1","msg":"randCodeRight"},"messages":[],"validateMessages":{}}
-            obj = r.json()
-            if (
-                    hasKeys(obj, ['status', 'httpstatus', 'data'])
-                    and hasKeys(obj['data'], ['result', 'msg'])
-                    and (obj['data']['result'] == '1')):
-                print(u'校验登录验证码成功')
-                break
-            else:
-                print(u'校验登录验证码失败')
-                dumpObj(obj)
-                continue
-        else:
-            print(u'尝试次数太多,自动退出程序以防账号被冻结')
-            sys.exit()
+        if self.checkRandCodeAnsyn('login') == RET_ERR:
+            return RET_ERR
 
         print(u'正在登录...')
         url = 'https://kyfw.12306.cn/otn/login/loginAysnSuggest'
-        referer = 'https://kyfw.12306.cn/otn/login/init'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('loginUserDTO.user_name', self.username),
             ('userDTO.password', self.password),
             ('randCode', self.captcha),
+            ('randCode_validate', ''),
+            #('ODg3NzQ0', 'OTIyNmFhNmQwNmI5ZmQ2OA%3D%3D'),
+            ('myversion', 'undefined')
         ]
         payload = urllib.urlencode(parameters)
         r = self.post(url, payload)
@@ -527,6 +716,12 @@ class MyOrder(object):
                 and hasKeys(obj['data'], ['loginCheck'])
                 and (obj['data']['loginCheck'] == 'Y')):
             print(u'登陆成功^_^')
+            url = 'https://kyfw.12306.cn/otn/login/userLogin'
+            parameters = [
+                ('_json_att', ''),
+            ]
+            payload = urllib.urlencode(parameters)
+            r = self.post(url, payload)
             return RET_OK
         else:
             print(u'登陆失败啦!重新登陆...')
@@ -535,8 +730,6 @@ class MyOrder(object):
 
     def getPassengerDTOs(self):
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs'
-        referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('', ''),
         ]
@@ -549,7 +742,7 @@ class MyOrder(object):
         if (
                 hasKeys(obj, ['status', 'httpstatus', 'data'])
                 and hasKeys(obj['data'], ['normal_passengers'])
-                and len(obj['data']['normal_passengers'])):
+                and obj['data']['normal_passengers']):
             self.normal_passengers = obj['data']['normal_passengers']
             return RET_OK
         else:
@@ -574,7 +767,7 @@ class MyOrder(object):
                 if self.getPassengerDTOs() == RET_OK:
                     break
             else:
-                print(u'获取乘客信息失败次数太多')
+                print(u'获取乘客信息失败次数太多, 使用配置文件提供的乘客信息')
                 return RET_ERR
         num = len(self.normal_passengers)
         for i in xrange(0, num):
@@ -619,9 +812,36 @@ class MyOrder(object):
         return RET_OK
 
     def queryTickets(self):
+        url = 'https://kyfw.12306.cn/otn/leftTicket/init'
+        parameters = [
+            ('_json_att', ''),
+            ('leftTicketDTO.from_station_name', self.from_city_name),
+            ('leftTicketDTO.to_station_name', self.to_city_name),
+            ('leftTicketDTO.from_station', self.from_station_telecode),
+            ('leftTicketDTO.to_station', self.to_station_telecode),
+            ('leftTicketDTO.train_date', self.train_date),
+            ('back_train_date', self.back_train_date),
+            ('purpose_codes', self.purpose_code),
+            ('pre_step_flag', 'index')
+        ]
+        payload = urllib.urlencode(parameters)
+        r = self.post(url, payload)
+        if not r:
+            print(u'查询车票异常')
+
+        url = 'https://kyfw.12306.cn/otn/leftTicket/log?'
+        parameters = [
+            ('leftTicketDTO.train_date', self.train_date),
+            ('leftTicketDTO.from_station', self.from_station_telecode),
+            ('leftTicketDTO.to_station', self.to_station_telecode),
+            ('purpose_codes', self.purpose_code),
+        ]
+        url += urllib.urlencode(parameters)
+        r = self.get(url)
+        if not r:
+            print(u'查询车票异常')
+
         url = 'https://kyfw.12306.cn/otn/leftTicket/query?'
-        referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('leftTicketDTO.train_date', self.train_date),
             ('leftTicketDTO.from_station', self.from_station_telecode),
@@ -886,11 +1106,20 @@ class MyOrder(object):
         return ret
 
     def initOrder(self):
+        url = 'https://kyfw.12306.cn/otn/login/checkUser'
+        parameters = [
+            ('_json_att', ''),
+        ]
+        payload = urllib.urlencode(parameters)
+        r = self.post(url, payload)
+        if not r:
+            print(u'初始化订单异常')
+
         print(u'准备下单喽')
         url = 'https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest'
-        referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
-        self.session.headers.update({'Referer': referer})
         parameters = [
+            #('ODA4NzIx', 'MTU0MTczYmQ2N2I3MjJkOA%3D%3D'),
+            ('myversion', 'undefined'),
             ('secretStr', self.trains[self.current_train_index]['secretStr']),
             ('train_date', self.train_date),
             ('back_train_date', self.back_train_date),
@@ -920,9 +1149,8 @@ class MyOrder(object):
             return RET_ERR
 
         print(u'订单初始化...')
+        self.session.close()  # TODO
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        referer = 'https://kyfw.12306.cn/otn/leftTicket/init'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('_json_att', ''),
         ]
@@ -955,44 +1183,7 @@ class MyOrder(object):
         return RET_OK
 
     def checkOrderInfo(self):
-        tries = 0
-        while tries < MAX_TRIES:
-            tries += 1
-            print(u'接收订单验证码...')
-            self.captcha = self.getCaptcha(
-                'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&',
-                'passenger',
-                'randp')
-
-            print(u'正在校验订单验证码...')
-            url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
-            referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-            self.session.headers.update({'Referer': referer})
-            parameters = [
-                ('randCode', self.captcha),
-                ('rand', 'randp'),
-                ('_json_att', ''),
-                ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
-            ]
-            payload = urllib.urlencode(parameters)
-            r = self.post(url, payload)
-            if not r:
-                print(u'校验订单验证码异常')
-                continue
-            # {"validateMessagesShowId":"_validatorMessage","status":true,"httpstatus":200,"data":{"result":"1","msg":"randCodeRight"},"messages":[],"validateMessages":{}}
-            obj = r.json()
-            if (
-                    hasKeys(obj, ['status', 'httpstatus', 'data'])
-                    and hasKeys(obj['data'], ['result'])
-                    and (obj['data']['result'] == '1')):
-                print(u'校验订单验证码成功')
-                break
-            else:
-                print(u'校验订单验证码失败')
-                dumpObj(obj)
-                continue
-        else:
-            print(u'尝试次数太多,请重试')
+        if self.checkRandCodeAnsyn('passenger') == RET_ERR:
             return RET_ERR
 
         passengerTicketStr = ''
@@ -1021,8 +1212,6 @@ class MyOrder(object):
 
         print(u'检查订单...')
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo'
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('cancel_flag', '2'),  # TODO
             ('bed_level_order_num', '000000000000000000000000000000'),  # TODO
@@ -1030,6 +1219,7 @@ class MyOrder(object):
             ('oldPassengerStr', self.oldPassengerStr),
             ('tour_flag', self.tour_flag),
             ('randCode', self.captcha),
+            #('NzA4MTc1', 'NmYyYzZkYWY2OWZkNzg2YQ%3D%3D'),  # TODO
             ('_json_att', ''),
             ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
         ]
@@ -1055,8 +1245,6 @@ class MyOrder(object):
     def getQueueCount(self):
         print(u'查询排队情况...')
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount'
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         t = self.trains[self.current_train_index]['queryLeftNewDTO']
         parameters = [
             ('train_date', date2UTC(self.train_date)),
@@ -1096,8 +1284,6 @@ class MyOrder(object):
     def confirmSingleForQueue(self):
         print(u'提交订单排队...')
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue'
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         t = self.trains[self.current_train_index]['queryLeftNewDTO']
         parameters = [
             ('passengerTicketStr', self.passengerTicketStr),
@@ -1132,8 +1318,6 @@ class MyOrder(object):
         print(u'等待订单流水号...')
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?random=%13d&tourFlag=dc&_json_att=&REPEAT_SUBMIT_TOKEN=%s' % (
             random.randint(1000000000000, 1999999999999), self.repeatSubmitToken)
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         r = self.get(url)
         if not r:
             print(u'等待订单流水号异常')
@@ -1161,8 +1345,6 @@ class MyOrder(object):
     def payOrder(self):
         print(u'等待订票结果...')
         url = 'https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue'
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('orderSequence_no', self.orderId),
             ('_json_att', ''),
@@ -1187,8 +1369,6 @@ class MyOrder(object):
 
         url = 'https://kyfw.12306.cn/otn//payOrder/init?random=%13d' % (
             random.randint(1000000000000, 1999999999999))
-        referer = 'https://kyfw.12306.cn/otn/confirmPassenger/initDc'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('_json_att', ''),
             ('REPEAT_SUBMIT_TOKEN', self.repeatSubmitToken),
@@ -1207,8 +1387,6 @@ class MyOrder(object):
 
     def queryMyOrderNotComplete(self):
         url = 'https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete'
-        referer = 'https://kyfw.12306.cn/otn/queryOrder/initNoComplete'
-        self.session.headers.update({'Referer': referer})
         parameters = [
             ('_json_att', ''),
         ]
