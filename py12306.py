@@ -88,7 +88,7 @@ def getSeatType(key):
 def selectSeatType():
     key = '1'  # 默认硬座
     while True:
-        print(u'请选择席别(左边第一个英文字母):')
+        print(u'请选择席别编码(即左边第一个英文字母):')
         for xb in seatMaps:
             print(u'%s: %s' % (xb[0], xb[1]))
         key = raw_input().upper()
@@ -238,6 +238,7 @@ class MyOrder(object):
         self.current_train_index = 0  # 当前选中的列车索引序号
         self.captcha = ''  # 图片验证码
         self.orderId = ''  # 订单流水号
+        self.canWebBuy = False  # 可预订
         self.notify = {
             'mail_enable': 0,
             'mail_username': '',
@@ -495,14 +496,15 @@ class MyOrder(object):
         with open('captcha.gif', 'wb') as fd:
             for chunk in r.iter_content():
                 fd.write(chunk)
-        print(u'请输入4位图片验证码(回车刷新):')
+        print(u'请输入4位图片验证码(回车刷新验证码):')
         captcha = raw_input()
         if len(captcha) == 4:
             return captcha
-        else:
-            if len(captcha) != 0:
-                print(u'%s是无效的图片验证码, 必须是4位' % (captcha))
+        elif len(captcha) != 0:
+            print(u'%s是无效的图片验证码, 必须是4位' % (captcha))
             return None
+        else:
+            return 1  # 刷新
 
     def initStation(self):
         url = 'https://kyfw.12306.cn/otn/resources/js/framework/station_name.js'
@@ -649,6 +651,9 @@ class MyOrder(object):
             self.captcha = self.getCaptcha(url)
             if not self.captcha:
                 continue
+            if self.captcha == 1:  # 刷新不计数
+                tries -= 1
+                continue
             url = 'https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn'
             parameters = [
                 ('randCode', self.captcha),
@@ -755,10 +760,11 @@ class MyOrder(object):
 
     def selectPassengers(self, prompt):
         if prompt == 1:
-            print(u'是否选择乘客?(如需选择请输入y或者yes, 默认不做选择, 使用配置文件提供的乘客信息)')
+            print(u'是否重新选择乘客?(如需选择请输入y或者yes, 默认使用配置文件提供的乘客信息)')
             act = raw_input()
             act = act.lower()
             if act != 'y' and act != 'yes':
+                self.printConfig()
                 return RET_OK
         if not (self.normal_passengers and len(self.normal_passengers)):
             tries = 0
@@ -776,7 +782,7 @@ class MyOrder(object):
             if (i + 1) % 5 == 0:
                 print('')
         while True:
-            print(u'\n请选择乘车人, 最多选择5个, 以逗号隔开, 如:1,2,3,4,5, 直接回车不选择, 使用配置文件中的乘客信息')
+            print(u'\n请选择乘车人(最多选择5个, 以逗号隔开, 如:1,2,3,4,5, 直接回车不选择, 使用配置文件中的乘客信息)')
             buf = raw_input()
             if not buf:
                 return RET_ERR
@@ -812,6 +818,7 @@ class MyOrder(object):
         return RET_OK
 
     def queryTickets(self):
+        self.canWebBuy = False
         url = 'https://kyfw.12306.cn/otn/leftTicket/init'
         parameters = [
             ('_json_att', ''),
@@ -889,13 +896,13 @@ class MyOrder(object):
 
     def printTrains(self):
         printDelimiter()
-        print(u"%s\t%s--->%s  '有':票源充足  '无':票已售完  '*':未到起售时间  '--':无此席别" % (
+        print(u'余票查询结果如下:')
+        print(u"%s\t%s--->%s\n'有':票源充足  '无':票已售完  '*':未到起售时间  '--':无此席别" % (
             self.train_date,
             self.from_city_name,
             self.to_city_name))
-        print(u'余票查询结果如下:')
         printDelimiter()
-        print(u'序号/车次\t乘车站\t目的站\t一等座\t二等座\t软卧\t硬卧\t软座\t硬座\t无座\t价格')
+        print(u'序号/车次\t乘车站\t目的站\t一等\t二等\t软卧\t硬卧\t硬座\t无座')
         seatTypeCode = {
             'swz': '商务座',
             'tz': '特等座',
@@ -909,7 +916,6 @@ class MyOrder(object):
             'wz': '无座',
             'qt': '其它',
         }
-        printDelimiter()
         # TODO 余票数量和票价 https://kyfw.12306.cn/otn/leftTicket/queryTicketPrice?train_no=770000K77505&from_station_no=09&to_station_no=13&seat_types=1431&train_date=2014-01-01
         # yp_info=4022300000301440004610078033421007800536 代表
         # 4022300000 软卧0
@@ -963,20 +969,23 @@ class MyOrder(object):
                 ypInfo['yz']['price']) if ypInfo['yz']['price'] else ''
             yw_price = u'硬卧%s' % (
                 ypInfo['yw']['price']) if ypInfo['yw']['price'] else ''
-            print(u'(%d)   %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s%s' % (
+            print(u'(%d)   %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' % (
                 index,
                 t['station_train_code'],
-                t['from_station_name'],
-                t['to_station_name'],
+                t['from_station_name'][0:3],  # 最多保留3个中文
+                t['to_station_name'][0:3],  # 最多保留3个中文
                 t['zy_num'],
                 t['ze_num'],
                 ypInfo['rw']['left'] if ypInfo['rw']['left'] else t['rw_num'],
                 ypInfo['yw']['left'] if ypInfo['yw']['left'] else t['yw_num'],
-                t['rz_num'],
+                #t['rz_num'],
                 ypInfo['yz']['left'] if ypInfo['yz']['left'] else t['yz_num'],
                 ypInfo['wz']['left'] if ypInfo['wz']['left'] else t['wz_num'],
-                yz_price,
-                yw_price))
+                #yz_price,
+                #yw_price
+            ))
+            if t['canWebBuy'] == 'Y':
+                self.canWebBuy = True
             index += 1
             if self.notify['mail_enable'] == 1 and t['canWebBuy'] == 'Y':
                 msg = ''
@@ -1037,7 +1046,8 @@ class MyOrder(object):
         self.current_train_index = 0
         trains_num = len(self.trains)
         print(u'您可以选择:')
-        print(u'1~%d.选择车次开始订票' % (trains_num))
+        if self.canWebBuy:
+            print(u'1~%d.选择车次开始订票' % (trains_num))
         print(u'p.更换乘车人')
         print(u's.更改席别')
         print(u'd.更改乘车日期')
@@ -1053,6 +1063,9 @@ class MyOrder(object):
         select = raw_input()
         select = select.lower()
         if select.isdigit():
+            if not self.canWebBuy:
+                print(u'没有可预订的车次, 请刷新车票或者更改查询条件')
+                return -1
             index = int(select)
             if index < 1 or index > trains_num:
                 print(u'输入的序号无效,请重新选择车次(1~%d)' % (trains_num))
@@ -1188,7 +1201,7 @@ class MyOrder(object):
 
         passengerTicketStr = ''
         oldPassengerStr = ''
-        passenger_seat_detail = '0'  # [0->随机][1->下铺][2->中铺][3->上铺]
+        passenger_seat_detail = '0'  # TODO [0->随机][1->下铺][2->中铺][3->上铺]
         for p in self.passengers:
             if p['index'] != 1:
                 passengerTicketStr += 'N_'
@@ -1469,7 +1482,7 @@ def main():
         if action == -1:
             continue
         elif action == 0:
-            sys.exit()
+            break
         # 订单初始化
         if order.initOrder() != RET_OK:
             continue
