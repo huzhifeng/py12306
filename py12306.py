@@ -1399,6 +1399,7 @@ class MyOrder(object):
             return RET_ERR
 
     def queryMyOrderNotComplete(self):
+        print(u'正在查询未完成订单...')
         url = 'https://kyfw.12306.cn/otn/queryOrder/queryMyOrderNoComplete'
         parameters = [
             ('_json_att', ''),
@@ -1410,8 +1411,10 @@ class MyOrder(object):
             return RET_ERR
         obj = r.json()
         if not (hasKeys(obj, ['status', 'httpstatus', 'data']) and obj['status']):
+            print(u'查询未完成订单失败')
+            dumpObj(obj)
             return RET_ERR
-        if (hasKeys(obj['data'], 'orderDBList') and obj['data']['orderDBList']):
+        if (hasKeys(obj['data'], ['orderDBList']) and len(obj['data']['orderDBList'])):
             print(u'查询到有未完成订单，请先处理')
             return RET_OK
         if (
