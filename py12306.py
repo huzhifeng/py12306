@@ -1055,6 +1055,7 @@ class MyOrder(object):
         print(u't.更改目的站')
         print(u'a.同时更改乘车日期,出发站和目的站')
         print(u'u.查询未完成订单')
+        print(u'c.查看订票信息')
         print(u'r.刷票模式')
         print(u'n.普通模式')
         print(u'q.退出')
@@ -1106,6 +1107,9 @@ class MyOrder(object):
             self.to_station_telecode = station['telecode']
         elif select == 'u':
             ret = self.queryMyOrderNotComplete()
+            ret = self.selectAction()
+        elif select == 'c':
+            ret = self.printConfig()
             ret = self.selectAction()
         elif select == 'r':
             self.notify['mail_enable'] = 1
