@@ -322,6 +322,13 @@ class MyOrder(object):
                 'Cache-Control': 'no-cache',
                 'If-Modified-Since': '0'
             },
+            'https://kyfw.12306.cn/otn/leftTicket/queryT?': {
+                'method': 'GET',
+                'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
+                'x-requested-with': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache',
+                'If-Modified-Since': '0'
+            },
             'https://kyfw.12306.cn/otn/login/checkUser': {
                 'method': 'POST',
                 'Referer': 'https://kyfw.12306.cn/otn/leftTicket/init',
@@ -406,6 +413,7 @@ class MyOrder(object):
             'https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew?module=passenger&rand=randp&',
             'https://kyfw.12306.cn/otn/leftTicket/log?',
             'https://kyfw.12306.cn/otn/leftTicket/query?',
+            'https://kyfw.12306.cn/otn/leftTicket/queryT?',
             'https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime?',
             'https://kyfw.12306.cn/otn//payOrder/init?'
         ]
@@ -848,7 +856,7 @@ class MyOrder(object):
         if not r:
             print(u'查询车票异常')
 
-        url = 'https://kyfw.12306.cn/otn/leftTicket/query?'
+        url = 'https://kyfw.12306.cn/otn/leftTicket/queryT?'
         parameters = [
             ('leftTicketDTO.train_date', self.train_date),
             ('leftTicketDTO.from_station', self.from_station_telecode),
