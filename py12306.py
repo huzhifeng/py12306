@@ -444,16 +444,22 @@ class MyOrder(object):
                 r = self.session.get(url, verify=False, timeout=16)
             except requests.exceptions.ConnectionError as e:
                 print('ConnectionError(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.Timeout as e:
                 print('Timeout(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.TooManyRedirects as e:
                 print('TooManyRedirects(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.HTTPError as e:
                 print('HTTPError(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.RequestException as e:
                 print('RequestException(%s): e=%s' % (url, e))
+                continue
             except:
                 print('Unknown exception(%s)' % (url))
+                continue
             if r.status_code != 200:
                 print('Request %s failed %d times, status_code=%d' % (
                     url,
@@ -478,16 +484,22 @@ class MyOrder(object):
                 r = self.session.post(url, data=payload, verify=False, timeout=16)
             except requests.exceptions.ConnectionError as e:
                 print('ConnectionError(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.Timeout as e:
                 print('Timeout(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.TooManyRedirects as e:
                 print('TooManyRedirects(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.HTTPError as e:
                 print('HTTPError(%s): e=%s' % (url, e))
+                continue
             except requests.exceptions.RequestException as e:
                 print('RequestException(%s): e=%s' % (url, e))
+                continue
             except:
                 print('Unknown exception(%s)' % (url))
+                continue
             if r.status_code != 200:
                 print('Request %s failed %d times, status_code=%d' % (
                     url,
